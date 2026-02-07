@@ -77,6 +77,14 @@ npm install
 > O repositório já vêm com o node_modules, já que em alguns testes, instalar ele usando 
 ```npm install node_modules```, dava erro.
 
+OU
+
+Baixe usando o botão:
+
+<img width="496" height="453" alt="image" src="https://github.com/user-attachments/assets/be4a514d-69bd-421a-b7b4-6a2cf921c4b9" />
+
+E apertando em "Download ZIP"
+
 ---
 
 ### 3️⃣ Executando o scraper
