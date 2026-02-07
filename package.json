@@ -1,0 +1,17 @@
+{
+  "name": "puppeteer-extract-pncp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "puppeteer": "^24.36.1"
+  },
+  "type": "module"
+}
