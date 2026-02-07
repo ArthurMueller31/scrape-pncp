@@ -74,6 +74,8 @@ git clone <URL_DO_REPOSITORIO>
 cd <NOME_DO_PROJETO>
 npm install
 ```
+> O repositório já vêm com o node_modules, já que em alguns testes, instalar ele usando 
+```npm install node_modules```, dava erro.
 
 ---
 
