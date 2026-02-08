@@ -27,7 +27,6 @@ if (!Number.isInteger(numberOfPagesToSearch) || numberOfPagesToSearch <= 0) {
 const config = loadConfig();
 let outputDir = config.outputDir;
 
-// se não existir config ou se o user pediu pra trocar
 if (!outputDir || forceAskPath) {
   const answer = await askDirectory(
     "Informe o diretório onde os arquivos devem ser salvos:\n> "
@@ -40,7 +39,6 @@ if (!outputDir || forceAskPath) {
 
   const resolvedPath = path.resolve(answer);
 
-  // cria a pasta se não existir
   fs.mkdirSync(resolvedPath, { recursive: true });
 
   outputDir = resolvedPath;
@@ -77,7 +75,6 @@ function loadConfig() {
   return {};
 }
 
-// salva config
 function saveConfig(config) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
 }
@@ -180,299 +177,444 @@ const sortedByLen = tokens.sort((a, b) => b.length - a.length);
 const selectedKeywords = sortedByLen.slice(0, 2).map(normalize);
 const keywordCount = Math.min(2, selectedKeywords.length);
 
-// console.log("Search URL:", userInput);
-// console.log("Selected keywords:", selectedKeywords);
-// console.log("Keyword matches required:", keywordCount);
+const startTimeMs = Date.now();
 
-await page.goto(userInput);
-
-// pega lista de links da busca e processa até maxEditais
-for (let index = 0; index < numberOfPagesToSearch; index++) {
-  // garantir que a página de busca está carregada e os links visíveis
-  await page.goto(userInput, { waitUntil: "networkidle2" });
-
-  let hasResults = true;
-
+async function safeWaitForSelector(page, selector, timeout = 10000) {
   try {
-    await page.waitForSelector("a.br-item", { timeout: 10000 });
-  } catch (error) {
-    hasResults = false;
+    await page.waitForSelector(selector, { timeout });
+    return true;
+  } catch (err) {
+    return false;
   }
+}
 
-  if (!hasResults) {
-    console.error(
-      "\nNenhum resultado encontrado.\nTente usar outros termos de busca."
-    );
-    await browser.close();
-    process.exit(0);
+async function safeWaitForFunction(page, fnOrStr, timeout = 10000, ...args) {
+  try {
+    await page.waitForFunction(fnOrStr, { timeout }, ...args);
+    return true;
+  } catch (err) {
+    return false;
   }
+}
 
-  const links = await page.$$("a.br-item");
-  if (!links.length) {
-    console.log("Nenhum edital encontrado na busca. Encerrando.");
-    break;
+async function safeClickHandle(handle) {
+  try {
+    await handle.click();
+    return true;
+  } catch {
+    try {
+      await handle.evaluate((el) => el.click());
+      return true;
+    } catch {
+      return false;
+    }
   }
+}
 
-  if (index >= links.length) {
-    console.log(
-      `Index ${index} fora do alcance dos links (${links.length}). Encerrando.`
-    );
-    break;
+async function safeClickByIndex(page, index) {
+  try {
+    const clicked = await page.evaluate((i) => {
+      const els = Array.from(document.querySelectorAll("a.br-item"));
+      if (!els || els.length <= i) return false;
+      els[i].scrollIntoView({ block: "center" });
+      els[i].click();
+      return true;
+    }, index);
+    return Boolean(clicked);
+  } catch (err) {
+    return false;
   }
+}
 
+await page.goto(userInput, { waitUntil: "networkidle2" });
+
+for (let index = 0; index < numberOfPagesToSearch; index++) {
   console.log(
     `\n===== Processando ${index + 1} de ${numberOfPagesToSearch} =====`
   );
 
-  await links[index].click();
-
-  await page.waitForFunction(
-    () =>
-      Array.from(document.querySelectorAll(".ng-star-inserted")).some((el) =>
-        el.innerText?.includes("Data de início de recebimento de propostas")
-      ),
-    { timeout: 10000 }
-  );
-
-  const editalInfo = await page.$$eval(".ng-star-inserted", (elements) => {
-    const extractDateAndTimeOnly = (text) => {
-      const match = text.match(/(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})/);
-      return match ? match[1] : null;
-    };
-
-    const result = { edital: null, dataInicio: null, dataFim: null };
-
-    if (elements.length >= 9) {
-      const rawEdital = elements[8].innerText || "";
-      result.edital = rawEdital.replace(/\s+/g, " ").trim();
-    }
-
-    elements.forEach((el) => {
-      const text = el.innerText?.replace(/\s+/g, " ").trim();
-      if (!text) return;
-      if (text.includes("Data de início de recebimento de propostas")) {
-        result.dataInicio = extractDateAndTimeOnly(text);
-      }
-      if (text.includes("Data fim de recebimento de propostas")) {
-        result.dataFim = extractDateAndTimeOnly(text);
-      }
-    });
-
-    return result;
-  });
-
-  // console.log("Edital/Contr. Direta:", editalInfo.edital);
-  // console.log("Data início:", editalInfo.dataInicio);
-  // console.log("Data fim:", editalInfo.dataFim);
-  // console.log("URL atual do edital:", page.url());
-
-  await page.waitForSelector("ng-select .ng-select-container", {
-    timeout: 15000
-  });
-  await page.click("ng-select .ng-select-container");
-  await page.waitForSelector(".ng-option", { timeout: 10000 });
-
-  const options = await page.$$(".ng-option");
-  for (const option of options) {
-    const text = await page.evaluate((el) => el.innerText.trim(), option);
-    if (text === "50") {
-      await option.click();
-      break;
-    }
+  const hasResults = await safeWaitForSelector(page, "a.br-item", 10000);
+  if (!hasResults) {
+    console.warn(
+      `Página de busca não contém 'a.br-item' (index ${index}). Pulando este índice.`
+    );
+    await page.goto(userInput, { waitUntil: "networkidle2" }).catch(() => {});
+    continue;
   }
 
-  await page.waitForSelector(".datatable-body-row", { timeout: 15000 });
-  await page.waitForSelector(".pagination-information.d-none.d-sm-flex", {
-    visible: true,
-    timeout: 15000
-  });
+  let links = await page.$$("a.br-item");
+  if (!links || links.length === 0) {
+    console.warn(
+      "Nenhum 'a.br-item' encontrado após reconsulta. Pulando índice."
+    );
+    await page.goto(userInput, { waitUntil: "networkidle2" }).catch(() => {});
+    continue;
+  }
 
-  async function collectRenderedItems() {
-    return page.$$eval(".datatable-body-row", (rows) => {
-      const results = [];
-      for (const row of rows) {
-        const cells = row.querySelectorAll(".datatable-body-cell-label");
-        if (!cells || cells.length < 3) continue;
+  if (index >= links.length) {
+    console.log(
+      `Index ${index} fora do alcance dos links (${links.length}). Encerrando loop.`
+    );
+    break;
+  }
 
-        const getText = (index) => {
-          const span =
-            cells[index]?.querySelector("span[title]") ||
-            cells[index]?.querySelector("span");
-          return span
-            ? (span.getAttribute("title") || span.innerText)
-                .replace(/\s+/g, " ")
-                .trim()
-            : "";
-        };
-
-        const numero = getText(0);
-        const descricao = getText(1);
-        const quantidadeRaw = getText(2);
-        const quantidadeNum = Number(
-          quantidadeRaw
-            .replace(/\./g, "")
-            .replace(",", ".")
-            .replace(/[^\d\.\-]/g, "") || NaN
-        );
-
-        if (
-          !numero ||
-          isNaN(Number(numero)) ||
-          !descricao ||
-          isNaN(quantidadeNum)
-        ) {
+  try {
+    const clicked = await safeClickByIndex(page, index);
+    if (!clicked) {
+      console.warn(
+        `Não foi possível clicar no link index ${index}. Tentando usar handle fallback...`
+      );
+      links = await page.$$("a.br-item");
+      if (links[index]) {
+        const ok = await safeClickHandle(links[index]);
+        if (!ok) {
+          console.warn(
+            `Fallback de clique também falhou para index ${index}. Pulando este edital.`
+          );
+          aggregatedResults.push({
+            sourceEdital: null,
+            dataInicio: null,
+            dataFim: null,
+            url: null,
+            filteredItems: []
+          });
+          await page
+            .goto(userInput, { waitUntil: "networkidle2" })
+            .catch(() => {});
           continue;
         }
-
-        results.push({
-          numero,
-          descricao,
-          quantidade: quantidadeRaw,
-          valorUnitarioEstimado: getText(3),
-          valorTotalEstimado: getText(4)
+      } else {
+        console.warn(`Handle inexistente para index ${index}. Pulando.`);
+        aggregatedResults.push({
+          sourceEdital: null,
+          dataInicio: null,
+          dataFim: null,
+          url: null,
+          filteredItems: []
         });
+        await page
+          .goto(userInput, { waitUntil: "networkidle2" })
+          .catch(() => {});
+        continue;
       }
-
-      return results;
-    });
-  }
-
-  const totalItems = await page.$eval(
-    ".pagination-information.d-none.d-sm-flex",
-    (el) => {
-      const text = el.innerText || "";
-      const match = text.match(/de\s+(\d+)\s+itens?/i);
-      return match ? Number(match[1]) : 0;
     }
-  );
 
-  // console.log("Total de itens declarado no edital:", totalItems);
+    const hasEditalContent = await safeWaitForFunction(
+      page,
+      () =>
+        Array.from(document.querySelectorAll(".ng-star-inserted")).some((el) =>
+          el.innerText?.includes("Data de início de recebimento de propostas")
+        ),
+      10000
+    );
 
-  const collectedMap = new Map();
+    if (!hasEditalContent) {
+      console.warn(
+        `Conteúdo do edital não carregou corretamente (index ${index}). Irei registrar vazio e seguir.`
+      );
+      aggregatedResults.push({
+        sourceEdital: null,
+        dataInicio: null,
+        dataFim: null,
+        url: page.url(),
+        filteredItems: []
+      });
+      await page.goto(userInput, { waitUntil: "networkidle2" }).catch(() => {});
+      continue;
+    }
 
-  async function ensureCollectPageTarget(desiredGlobalCount, maxAttempts = 20) {
-    let attempts = 0;
-    while (attempts < maxAttempts) {
-      attempts++;
-      const rendered = await collectRenderedItems();
-      for (const it of rendered) {
-        if (it.numero && !collectedMap.has(it.numero)) {
-          collectedMap.set(it.numero, it);
+    let editalInfo = { edital: null, dataInicio: null, dataFim: null };
+    try {
+      editalInfo = await page.$$eval(".ng-star-inserted", (elements) => {
+        const extractDateAndTimeOnly = (text) => {
+          const match = text.match(/(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})/);
+          return match ? match[1] : null;
+        };
+
+        const result = { edital: null, dataInicio: null, dataFim: null };
+
+        if (elements.length >= 9) {
+          const rawEdital = elements[8].innerText || "";
+          result.edital = rawEdital.replace(/\s+/g, " ").trim();
+        }
+
+        elements.forEach((el) => {
+          const text = el.innerText?.replace(/\s+/g, " ").trim();
+          if (!text) return;
+          if (text.includes("Data de início de recebimento de propostas")) {
+            result.dataInicio = extractDateAndTimeOnly(text);
+          }
+          if (text.includes("Data fim de recebimento de propostas")) {
+            result.dataFim = extractDateAndTimeOnly(text);
+          }
+        });
+
+        return result;
+      });
+    } catch (err) {
+      console.warn(
+        "Falha ao extrair informações do edital:",
+        err?.message || err
+      );
+    }
+
+    try {
+      const hasNgSelect = await safeWaitForSelector(
+        page,
+        "ng-select .ng-select-container",
+        7000
+      );
+      if (hasNgSelect) {
+        await page.click("ng-select .ng-select-container").catch(() => {});
+        const optPresent = await safeWaitForSelector(page, ".ng-option", 7000);
+        if (optPresent) {
+          const opts = await page.$$(".ng-option");
+          for (const option of opts) {
+            const text = await page
+              .evaluate((el) => el.innerText.trim(), option)
+              .catch(() => "");
+            if (text === "50") {
+              await safeClickHandle(option);
+              break;
+            }
+          }
         }
       }
-      if (collectedMap.size >= desiredGlobalCount) return true;
-      await page.evaluate(() => {
-        const body = document.querySelector(".datatable-body");
-        if (body) body.scrollTop += 800;
-        else window.scrollBy(0, 800);
-      });
-      await sleep(300);
-    }
-    return collectedMap.size >= desiredGlobalCount;
-  }
-
-  let remaining = totalItems > 0 ? totalItems : Infinity;
-  let pageIndex = 0;
-  while (remaining > 0) {
-    pageIndex++;
-    const pageTargetRelative = Math.min(
-      50,
-      remaining === Infinity ? 50 : remaining
-    );
-    const desiredGlobal = collectedMap.size + pageTargetRelative;
-
-    // console.log(
-    //   ` -> Página interna ${pageIndex}: alvo desta página = ${pageTargetRelative} (restantes=${remaining})`
-    // );
-
-    await ensureCollectPageTarget(desiredGlobal, 20);
-    // console.log(
-    //   ` -> Após coleta página ${pageIndex}: total acumulado no edital = ${collectedMap.size}`
-    // );
-
-    if (totalItems > 0 && collectedMap.size >= totalItems) break;
-    if (remaining === Infinity) break;
-
-    const clicked = await clickNextBtnFirst(page);
-    if (!clicked) {
-      console.log(
-        " -> Não foi possível clicar no botão próxima do edital — parando paginação interna."
+    } catch (err) {
+      console.warn(
+        "Não foi possível selecionar opção 50 (seguindo sem isso):",
+        err?.message || err
       );
-      break;
     }
 
-    const prev = await page.$eval(
+    const hasRows = await safeWaitForSelector(
+      page,
+      ".datatable-body-row",
+      8000
+    );
+    const hasPaginationInfo = await safeWaitForSelector(
+      page,
       ".pagination-information.d-none.d-sm-flex",
-      (el) => el.innerText || ""
+      8000
     );
-    try {
-      await page.waitForFunction(
-        (prevText) => {
-          const el = document.querySelector(
-            ".pagination-information.d-none.d-sm-flex"
+
+    let totalItems = 0;
+    if (hasPaginationInfo) {
+      try {
+        totalItems = await page.$eval(
+          ".pagination-information.d-none.d-sm-flex",
+          (el) => {
+            const text = el.innerText || "";
+            const match = text.match(/de\s+(\d+)\s+itens?/i);
+            return match ? Number(match[1]) : 0;
+          }
+        );
+      } catch {
+        totalItems = 0;
+      }
+    }
+
+    const collectedMap = new Map();
+    if (hasRows) {
+      async function collectRenderedItemsSafe() {
+        try {
+          return await page.$$eval(".datatable-body-row", (rows) => {
+            const results = [];
+            for (const row of rows) {
+              const cells = row.querySelectorAll(".datatable-body-cell-label");
+              if (!cells || cells.length < 3) continue;
+              const getText = (index) => {
+                const span =
+                  cells[index]?.querySelector("span[title]") ||
+                  cells[index]?.querySelector("span");
+                return span
+                  ? (span.getAttribute("title") || span.innerText)
+                      .replace(/\s+/g, " ")
+                      .trim()
+                  : "";
+              };
+              const numero = getText(0);
+              const descricao = getText(1);
+              const quantidadeRaw = getText(2);
+              const quantidadeNum = Number(
+                quantidadeRaw
+                  .replace(/\./g, "")
+                  .replace(",", ".")
+                  .replace(/[^\d\.\-]/g, "") || NaN
+              );
+              if (
+                !numero ||
+                isNaN(Number(numero)) ||
+                !descricao ||
+                isNaN(quantidadeNum)
+              ) {
+                continue;
+              }
+              results.push({
+                numero,
+                descricao,
+                quantidade: quantidadeRaw,
+                valorUnitarioEstimado: getText(3),
+                valorTotalEstimado: getText(4)
+              });
+            }
+            return results;
+          });
+        } catch {
+          return [];
+        }
+      }
+
+      async function ensureCollectPageTargetSafe(
+        desiredGlobalCount,
+        maxAttempts = 20
+      ) {
+        let attempts = 0;
+        while (attempts < maxAttempts) {
+          attempts++;
+          const rendered = await collectRenderedItemsSafe();
+          for (const it of rendered) {
+            if (it.numero && !collectedMap.has(it.numero))
+              collectedMap.set(it.numero, it);
+          }
+          if (collectedMap.size >= desiredGlobalCount) return true;
+          await page
+            .evaluate(() => {
+              const body = document.querySelector(".datatable-body");
+              if (body) body.scrollTop += 800;
+              else window.scrollBy(0, 800);
+            })
+            .catch(() => {});
+          await sleep(300);
+        }
+        return collectedMap.size >= desiredGlobalCount;
+      }
+
+      let remaining = totalItems > 0 ? totalItems : Infinity;
+      let pageIndex = 0;
+      while (remaining > 0) {
+        pageIndex++;
+        const pageTargetRelative = Math.min(
+          50,
+          remaining === Infinity ? 50 : remaining
+        );
+        const desiredGlobal = collectedMap.size + pageTargetRelative;
+        try {
+          await ensureCollectPageTargetSafe(desiredGlobal, 20);
+        } catch {}
+
+        if (totalItems > 0 && collectedMap.size >= totalItems) break;
+        if (remaining === Infinity) break;
+
+        const clickedNext = await clickNextBtnFirst(page).catch(() => false);
+        if (!clickedNext) break;
+
+        try {
+          const prev = await page.$eval(
+            ".pagination-information.d-none.d-sm-flex",
+            (el) => el.innerText || ""
           );
-          return !!el && el.innerText.trim() !== prevText;
-        },
-        { timeout: 10000 },
-        prev
-      );
-    } catch {
-      await sleep(800);
+          await page
+            .waitForFunction(
+              (prevText) => {
+                const el = document.querySelector(
+                  ".pagination-information.d-none.d-sm-flex"
+                );
+                return !!el && el.innerText.trim() !== prevText;
+              },
+              { timeout: 10000 },
+              prev
+            )
+            .catch(() => {});
+        } catch {}
+
+        await safeWaitForSelector(page, ".datatable-body-row", 8000);
+        remaining =
+          totalItems > 0
+            ? Math.max(0, totalItems - collectedMap.size)
+            : Infinity;
+        if (pageIndex >= 50) break;
+      }
     }
 
-    await page.waitForSelector(".datatable-body-row", { timeout: 10000 });
-    remaining =
-      totalItems > 0 ? Math.max(0, totalItems - collectedMap.size) : Infinity;
-    if (pageIndex >= 50) {
-      // console.log(
-      //   " -> Limite de páginas internas alcançado. Parando para segurança."
-      // );
-      break;
-    }
-  }
+    let finalItems = Array.from(collectedMap.values());
+    finalItems.sort((a, b) => Number(a.numero) - Number(b.numero));
+    if (totalItems > 0) finalItems = finalItems.slice(0, totalItems);
 
-  let finalItems = Array.from(collectedMap.values());
-  finalItems.sort((a, b) => Number(a.numero) - Number(b.numero));
-  if (totalItems > 0) finalItems = finalItems.slice(0, totalItems);
+    const filtered = finalItems.filter((it) => {
+      if (keywordCount === 0) return true;
+      const desc = normalize(it.descricao);
+      let matches = 0;
+      for (const k of selectedKeywords) {
+        if (!k) continue;
+        if (desc.includes(k)) matches++;
+      }
+      return matches >= Math.min(keywordCount, selectedKeywords.length);
+    });
 
-  // console.log(`-> Itens coletados nesse edital: ${finalItems.length}`);
+    aggregatedResults.push({
+      sourceEdital: editalInfo.edital,
+      dataInicio: editalInfo.dataInicio,
+      dataFim: editalInfo.dataFim,
+      url: page.url(),
+      filteredItems: filtered
+    });
 
-  if (keywordCount === 0) {
-    console.log(
-      "Nenhuma palavra-chave válida para filtrar. Mantendo todos os itens coletados."
+    await page.goto(userInput, { waitUntil: "networkidle2" }).catch(() => {});
+    await sleep(500);
+  } catch (err) {
+    console.error(
+      `Erro ao processar edital index ${index}: ${err?.message || err}. Pulando para o próximo.`
     );
+    aggregatedResults.push({
+      sourceEdital: null,
+      dataInicio: null,
+      dataFim: null,
+      url: null,
+      filteredItems: []
+    });
+    await page.goto(userInput, { waitUntil: "networkidle2" }).catch(() => {});
+    await sleep(500);
+    continue;
   }
-  const filtered = finalItems.filter((it) => {
-    if (keywordCount === 0) return true;
-    const desc = normalize(it.descricao);
-    let matches = 0;
-    for (const k of selectedKeywords) {
-      if (!k) continue;
-      if (desc.includes(k)) matches++;
-    }
-    return matches >= Math.min(keywordCount, selectedKeywords.length);
-  });
+}
 
-  // console.log(
-  //   `-> Itens filtrados do edital (após keywords): ${filtered.length}`
-  // );
-  // console.log(JSON.stringify(filtered, null, 2));
+const endTimeMs = Date.now();
+const elapsedMs = endTimeMs - startTimeMs;
 
-  aggregatedResults.push({
-    sourceEdital: editalInfo.edital,
-    dataInicio: editalInfo.dataInicio,
-    dataFim: editalInfo.dataFim,
-    url: page.url(),
-    filteredItems: filtered
-  });
+const totalFilteredItems = aggregatedResults.reduce(
+  (sum, e) =>
+    sum + (Array.isArray(e.filteredItems) ? e.filteredItems.length : 0),
+  0
+);
 
-  await page.goto(userInput, { waitUntil: "networkidle2" });
-  await sleep(500); // pequeno respiro antes do próximo loop
+const uniqueDescSet = new Set();
+for (const ed of aggregatedResults) {
+  const items = Array.isArray(ed.filteredItems) ? ed.filteredItems : [];
+  for (const it of items) {
+    const descNorm = normalize(it.descricao || "");
+    if (descNorm) uniqueDescSet.add(descNorm);
+  }
+}
+const uniqueProductsCount = uniqueDescSet.size;
+
+function formatDuration(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 console.log("\n===== Resumo final de todos os editais processados =====");
 console.log(`Editais processados: ${aggregatedResults.length}`);
-// console.log(JSON.stringify(aggregatedResults, null, 2));
+console.log(`Total de itens filtrados: ${totalFilteredItems}`);
+console.log(`Produtos diferentes: ${uniqueProductsCount}`);
+console.log(`Tempo total decorrido: ${formatDuration(elapsedMs)}`);
+
+await exportToExcel(aggregatedResults, outputDir);
+await browser.close();
 
 async function exportToExcel(aggregatedResults, outputDir, filename = null) {
   if (!Array.isArray(aggregatedResults) || aggregatedResults.length === 0) {
@@ -505,12 +647,11 @@ async function exportToExcel(aggregatedResults, outputDir, filename = null) {
 
   sheet.getRow(1).font = { bold: true };
   sheet.getRow(1).alignment = { vertical: "middle", horizontal: "center" };
-  sheet.views = [{ state: "frozen", ySplit: 1 }]; // congela header
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
   sheet.autoFilter = {
     from: "A1",
     to: "I1"
   };
-
   sheet.getColumn("descricao").alignment = { wrapText: true };
 
   const centerCols = [
@@ -532,9 +673,7 @@ async function exportToExcel(aggregatedResults, outputDir, filename = null) {
   const parseItemNumber = (raw) => {
     if (raw === null || raw === undefined) return null;
     const s = String(raw).trim();
-
     if (!/^\d+$/.test(s)) return null;
-
     const n = Number(s);
     return Number.isNaN(n) ? null : n;
   };
@@ -545,7 +684,6 @@ async function exportToExcel(aggregatedResults, outputDir, filename = null) {
     if (!s) return null;
     s = s.replace(/[^\d\.\,\-]/g, "");
     if (!s) return null;
-
     const hasDot = s.indexOf(".") !== -1;
     const hasComma = s.indexOf(",") !== -1;
     if (hasDot && hasComma) {
@@ -745,6 +883,3 @@ async function exportToExcel(aggregatedResults, outputDir, filename = null) {
 
   return outPath;
 }
-
-await exportToExcel(aggregatedResults, outputDir);
-await browser.close();
