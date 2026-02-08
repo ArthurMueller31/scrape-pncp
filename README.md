@@ -1,3 +1,5 @@
+🇧🇷 **PT-BR**
+
 ## 🧠 O que faz?
 
 Este projeto é um **scraper automatizado do PNCP (Portal Nacional de Contratações Públicas)** desenvolvido em **Node.js**, que permite pesquisar editais ou contratações diretas a partir de um termo informado pelo usuário e **exportar os resultados organizados em uma planilha Excel**.
@@ -170,4 +172,186 @@ Ao final da execução:
   * Filtros automáticos
   * Valores monetários no formato **R$**
   * Dados organizados por edital
+
+
+  Claro 🙂 Segue **todo o README traduzido para inglês**, já com a sugestão de colocar a **flag EN-US no topo**.
+
+---
+
+🇺🇸 **EN-US**
+
+## 🧠 What does it do?
+
+This project is an **automated scraper for the PNCP (National Public Procurement Portal of Brazil)** developed in **Node.js**. It allows users to search for **public tenders or direct procurements** based on a keyword and **export the organized results to an Excel spreadsheet**.
+
+The tool performs the entire process automatically:
+
+* Accesses the PNCP using the provided search term
+* Navigates through the found tenders
+* Extracts general information from each tender, such as:
+
+  * Tender name or direct procurement name
+  * Start date for proposal submission
+  * End date for proposal submission
+* Accesses the items table of each tender and collects:
+
+  * Item number
+  * Description
+  * Quantity
+  * Estimated unit price
+  * Estimated total price
+
+The collected data is **filtered by keywords**, organized, and automatically exported to an **Excel (.xlsx)** file, already formatted to facilitate analysis, reading, and further use.
+
+---
+
+### 🔧 Additional Features
+
+* Execution via **command-line interface (CLI)**
+* Dynamic parameters:
+
+  * Search term
+  * Number of pages/tenders to process
+* Output directory selection:
+
+  * The chosen location is automatically saved and reused in future runs
+  * It can be changed at any time using a flag (`--arquivo`)
+* Error handling:
+
+  * Clear message when no results are found
+  * Prevents empty files or silent failures
+* Excel export with:
+
+  * Fixed headers
+  * Automatic filters
+  * Currency formatting
+  * Automatic column and row resizing
+
+---
+
+## ▶️ How to Use
+
+### 1️⃣ Prerequisites
+
+Before starting, make sure you have installed:
+
+* **Node.js** (version 18 or higher recommended)
+* **npm** (comes bundled with Node.js)
+
+To check:
+
+```bash
+node -v
+npm -v
+```
+
+---
+
+### 2️⃣ Installation
+
+Clone the repository and install dependencies:
+
+```bash
+git clone <REPOSITORY_URL>
+cd <PROJECT_NAME>
+npm install
+```
+
+> The repository already includes the `node_modules` folder, since in some tests installing it using
+> `npm install node_modules` caused errors.
+
+OR
+
+Download it using the button below:
+
+<img width="496" height="453" alt="image" src="https://github.com/user-attachments/assets/be4a514d-69bd-421a-b7b4-6a2cf921c4b9" />
+
+And click **"Download ZIP"**.
+
+---
+
+### 3️⃣ Running the Scraper
+
+The script is executed via the **command line**, providing:
+
+```bash
+node index.js "<search term>" <number of pages>
+```
+
+#### 🔹 Parameters
+
+| Parameter         | Required | Description                               |
+| ----------------- | -------- | ----------------------------------------- |
+| `search term`     | ✅ Yes    | Text used to search tenders on PNCP       |
+| `number of pages` | ❌ No     | Number of tenders to process (default: 5) |
+
+> ⚠️ The search term **must be enclosed in quotes**.
+
+---
+
+### 4️⃣ Examples
+
+Search for “sunscreen” and process up to 5 tenders:
+
+```bash
+node index.js "sunscreen" 5
+```
+
+Search only for “gloves”, processing 5 tenders (if no number is provided, the default is 5 pages):
+
+```bash
+node index.js "gloves"
+```
+
+---
+
+### 5️⃣ Choosing Where to Save the File
+
+On the **first execution**, the program will ask where the Excel files should be saved:
+
+```text
+Enter the directory where the files should be saved:
+>
+```
+
+This path will be **automatically saved** and reused in future executions.
+
+#### 🔁 Changing the Output Directory
+
+To choose a new save location, run the script with the flag:
+
+```bash
+node index.js "sunscreen" 3 --arquivo
+```
+
+---
+
+### 6️⃣ Help
+
+To display usage instructions in the terminal:
+
+```bash
+node index.js --help
+```
+
+or
+
+```bash
+node index.js -h
+```
+
+---
+
+### 7️⃣ Output
+
+At the end of execution:
+
+* An **Excel (.xlsx)** file will be generated in the selected directory
+* The file name includes the execution date and time
+* The spreadsheet comes preformatted, with:
+
+  * Automatic filters
+  * Currency values formatted in **R$**
+  * Data organized by tender
+
 
