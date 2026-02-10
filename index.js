@@ -10,7 +10,7 @@ const args = process.argv.slice(2);
 const forceAskPath = args.includes("--arquivo");
 
 const rawSearchTerm = args[0];
-const numberOfPagesToSearch = Number(args[1] || 1);
+let numberOfPagesToSearch = Number(args[1] || 1);
 
 if (!rawSearchTerm) {
   console.error(
@@ -64,6 +64,19 @@ function askDirectory(question) {
   });
 }
 
+function promptEnter(question) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+}
+
 function loadConfig() {
   if (fs.existsSync(CONFIG_FILE)) {
     try {
@@ -112,7 +125,7 @@ if (!Number.isInteger(numberOfPagesToSearch) || numberOfPagesToSearch <= 0) {
 }
 
 console.log("Termo de busca:", rawSearchTerm);
-console.log("Páginas a processar:", numberOfPagesToSearch);
+console.log("Páginas a processar (solicitadas):", numberOfPagesToSearch);
 
 function searchLink(receivedUserInput) {
   const search = (receivedUserInput || "").trim();
@@ -177,8 +190,6 @@ const sortedByLen = tokens.sort((a, b) => b.length - a.length);
 const selectedKeywords = sortedByLen.slice(0, 2).map(normalize);
 const keywordCount = Math.min(2, selectedKeywords.length);
 
-const startTimeMs = Date.now();
-
 async function safeWaitForSelector(page, selector, timeout = 10000) {
   try {
     await page.waitForSelector(selector, { timeout });
@@ -228,37 +239,87 @@ async function safeClickByIndex(page, index) {
 
 await page.goto(userInput, { waitUntil: "networkidle2" });
 
-for (let index = 0; index < numberOfPagesToSearch; index++) {
-  console.log(
-    `\n===== Processando ${index + 1} de ${numberOfPagesToSearch} =====`
-  );
+let totalPages = null;
 
-  const hasResults = await safeWaitForSelector(page, "a.br-item", 10000);
-  if (!hasResults) {
-    console.warn(
-      `Página de busca não contém 'a.br-item' (index ${index}). Pulando este índice.`
-    );
-    await page.goto(userInput, { waitUntil: "networkidle2" }).catch(() => {});
-    continue;
-  }
-
-  let links = await page.$$("a.br-item");
-  if (!links || links.length === 0) {
-    console.warn(
-      "Nenhum 'a.br-item' encontrado após reconsulta. Pulando índice."
-    );
-    await page.goto(userInput, { waitUntil: "networkidle2" }).catch(() => {});
-    continue;
-  }
-
-  if (index >= links.length) {
+let pagesToProcess = numberOfPagesToSearch;
+if (totalPages !== null) {
+  if (numberOfPagesToSearch > totalPages) {
     console.log(
-      `Index ${index} fora do alcance dos links (${links.length}). Encerrando loop.`
+      `O número de páginas solicitadas (${numberOfPagesToSearch}) é maior do que o disponível no PNCP (${totalPages}). Irá ser usado o número de ${totalPages} páginas.`
     );
-    break;
+    pagesToProcess = totalPages;
   }
+}
+
+try {
+  await page.waitForSelector(".pagination-information.d-none.d-sm-flex", {
+    timeout: 5000
+  });
+
+  const paginationText = await page.evaluate(() => {
+    const el = document.querySelector(
+      ".pagination-information.d-none.d-sm-flex"
+    );
+    return el ? el.innerText : "";
+  });
+
+  const match = paginationText.match(/de\s(\d+)/);
+
+  if (match && match[1]) {
+    const totalItems = Number(match[1]);
+
+    if (!Number.isNaN(totalItems) && totalItems > 0) {
+      totalPages = totalItems;
+    }
+  }
+} catch (err) {
+  totalPages = null;
+}
+
+console.log("");
+console.log(`Páginas solicitadas: ${numberOfPagesToSearch}`);
+console.log(
+  `Total de páginas encontradas para essa pesquisa: ${totalPages !== null ? totalPages : "desconhecido"}`
+);
+const answerConfirm = await promptEnter(
+  `Continuar com ${numberOfPagesToSearch}? (Aperte Enter para continuar, qualquer outra tecla + Enter para cancelar) `
+);
+
+if (answerConfirm.trim() !== "") {
+  console.log("Operação cancelada pelo usuário.");
+  await browser.close();
+  process.exit(0);
+}
+
+const startTimeMs = Date.now();
+
+for (let index = 0; index < pagesToProcess; index++) {
+  console.log(`\n===== Processando ${index + 1} de ${pagesToProcess} =====`);
 
   try {
+    await page.goto(userInput, { waitUntil: "networkidle2" }).catch(() => {});
+
+    const hasResults = await safeWaitForSelector(page, "a.br-item", 10000);
+    if (!hasResults) {
+      console.warn(`Página de busca não possui conteúdo. Pulando este índice.`);
+      continue;
+    }
+
+    let links = await page.$$("a.br-item");
+    if (!links || links.length === 0) {
+      console.warn(
+        "Nenhum 'a.br-item' encontrado após reconsulta. Pulando índice."
+      );
+      continue;
+    }
+
+    if (index >= links.length) {
+      console.log(
+        `Index ${index} fora do alcance dos links (${links.length}). Encerrando loop.`
+      );
+      break;
+    }
+
     const clicked = await safeClickByIndex(page, index);
     if (!clicked) {
       console.warn(
@@ -278,9 +339,6 @@ for (let index = 0; index < numberOfPagesToSearch; index++) {
             url: null,
             filteredItems: []
           });
-          await page
-            .goto(userInput, { waitUntil: "networkidle2" })
-            .catch(() => {});
           continue;
         }
       } else {
@@ -292,9 +350,6 @@ for (let index = 0; index < numberOfPagesToSearch; index++) {
           url: null,
           filteredItems: []
         });
-        await page
-          .goto(userInput, { waitUntil: "networkidle2" })
-          .catch(() => {});
         continue;
       }
     }
@@ -319,7 +374,6 @@ for (let index = 0; index < numberOfPagesToSearch; index++) {
         url: page.url(),
         filteredItems: []
       });
-      await page.goto(userInput, { waitUntil: "networkidle2" }).catch(() => {});
       continue;
     }
 
@@ -607,8 +661,8 @@ function formatDuration(ms) {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-console.log("\n===== Resumo final de todos os editais processados =====");
-console.log(`Editais processados: ${aggregatedResults.length}`);
+console.log("\n===== Resumo final de todos as páginas processadas =====");
+console.log(`Páginas processadas: ${aggregatedResults.length}`);
 console.log(`Total de itens filtrados: ${totalFilteredItems}`);
 console.log(`Produtos diferentes: ${uniqueProductsCount}`);
 console.log(`Tempo total decorrido: ${formatDuration(elapsedMs)}`);
@@ -616,7 +670,7 @@ console.log(`Tempo total decorrido: ${formatDuration(elapsedMs)}`);
 await exportToExcel(aggregatedResults, outputDir);
 await browser.close();
 
-async function exportToExcel(aggregatedResults, outputDir, filename = null) {
+async function exportToExcel(aggregatedResults, outputDir) {
   if (!Array.isArray(aggregatedResults) || aggregatedResults.length === 0) {
     console.log("Nenhum dado para exportar.");
     return;
@@ -866,16 +920,29 @@ async function exportToExcel(aggregatedResults, outputDir, filename = null) {
     column.width = Math.min(Math.max(maxLength + 2, 10), 60);
   });
 
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  const day = pad(now.getDate());
-  const month = pad(now.getMonth() + 1);
-  const year = String(now.getFullYear()).slice(-2);
-  const hour = pad(now.getHours());
-  const minute = pad(now.getMinutes());
-  const ts = `${day}-${month}-${year}_${hour}-${minute}`;
+  function buildFileName(rawSearchTerm, maxWords = 3) {
+    rawSearchTerm
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove accents
+      .toLowerCase()
+      .split(/\s+/) // separate by spaces
+      .filter(Boolean)
+      .slice(0, maxWords)
+      .join("-");
 
-  const outFile = filename || `PNCP_resultados_${ts}.xlsx`;
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const day = pad(now.getDate());
+    const month = pad(now.getMonth() + 1);
+    const year = String(now.getFullYear()).slice(-2);
+    const hour = pad(now.getHours());
+    const minute = pad(now.getMinutes());
+    const ts = `${day}-${month}-${year}_${hour}-${minute}`;
+
+    return `${rawSearchTerm}_${ts}.xlsx`;
+  }
+
+  const outFile = buildFileName(rawSearchTerm);
   const outPath = path.join(outputDir, outFile);
 
   await workbook.xlsx.writeFile(outPath);
