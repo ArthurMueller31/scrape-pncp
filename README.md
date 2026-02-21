@@ -36,17 +36,16 @@ Os dados coletados são **filtrados por palavras-chave**, organizados e exportad
 
   * O local é salvo automaticamente e reutilizado nas próximas execuções
   * Pode ser alterado a qualquer momento via flag (`--arquivo`)
-* Tratamento de erros:
+* Backups de progresso: o programa cria um arquivo de backup a cada **15 páginas processadas**. O backup tem nome fixo e é sobrescrito a cada 15 páginas (ex.: `protetor_solar_backup.xlsx`).
+* O usuário pode escolher executar até **3 processos simultâneos** para acelerar o scraping (mais processos consomem mais recursos).
 
-  * Mensagem clara quando nenhum resultado é encontrado
-  * Evita arquivos vazios ou falhas silenciosas
 * Exportação para Excel com:
 
   * Cabeçalhos fixos
   * Filtros automáticos
   * Formatação de valores monetários
   * Ajuste automático de colunas e linhas
- 
+
 ---
 
 ## ▶️ Como usar
@@ -76,16 +75,12 @@ git clone <URL_DO_REPOSITORIO>
 cd <NOME_DO_PROJETO>
 npm install
 ```
-> O repositório já vêm com o node_modules, já que em alguns testes, instalar ele usando 
-```npm install node_modules```, dava erro.
+
+> O repositório já inclui `node_modules` para garantir o funcionamento correto.
 
 OU
 
-Baixe usando o botão:
-
-<img width="496" height="453" alt="image" src="https://github.com/user-attachments/assets/be4a514d-69bd-421a-b7b4-6a2cf921c4b9" />
-
-E apertando em "Download ZIP"
+Baixe usando o botão de "Download ZIP" e extraia.
 
 ---
 
@@ -102,7 +97,7 @@ node index.js "<termo de busca>" <numero de paginas>
 | Parâmetro           | Obrigatório | Descrição                                     |
 | ------------------- | ----------- | --------------------------------------------- |
 | `termo de busca`    | ✅ Sim       | Texto usado para pesquisar editais no PNCP    |
-| `numero de paginas` | ❌ Não       | Quantidade de editais a processar (padrão: 5) |
+| `numero de paginas` | ❌ Não       | Quantidade de editais a processar (padrão: 1) |
 
 > ⚠️ O termo de busca **deve estar entre aspas**.
 
@@ -110,13 +105,13 @@ node index.js "<termo de busca>" <numero de paginas>
 
 ### 4️⃣ Exemplos
 
-Buscar por “protetor solar” e processar até 5 editais:
+Buscar por “protetor solar” e processar até 10 editais:
 
 ```bash
-node index.js "protetor solar" 5
+node index.js "protetor solar" 10
 ```
 
-Buscar apenas por “luvas”, processando 5 editais (se não digitar número, padrão de 5 páginas):
+Buscar apenas por “luvas”, processando 1 edital (padrão quando não informado):
 
 ```bash
 node index.js "luvas"
@@ -143,38 +138,21 @@ Para escolher um novo local de salvamento, execute o script com a flag:
 node index.js "protetor solar" 3 --arquivo
 ```
 
----
-
-### 6️⃣ Ajuda
-
-Para exibir as instruções de uso no terminal:
-
-```bash
-node index.js --help
-```
-
-ou
-
-```bash
-node index.js -h
-```
+"protetor solar" e "3" são apenas exemplos de palavras.
 
 ---
 
-### 7️⃣ Resultado
+### 6️⃣ Resultado
 
 Ao final da execução:
 
 * Um arquivo **Excel (.xlsx)** será gerado no diretório escolhido
-* O nome do arquivo inclui data e hora da execução
+* O nome do arquivo definitivo inclui data e hora da execução
 * A planilha vem formatada, com:
 
   * Filtros automáticos
   * Valores monetários no formato **R$**
   * Dados organizados por edital
-
-
-  Claro 🙂 Segue **todo o README traduzido para inglês**, já com a sugestão de colocar a **flag EN-US no topo**.
 
 ---
 
@@ -182,18 +160,18 @@ Ao final da execução:
 
 ## 🧠 What does it do?
 
-This project is an **automated scraper for the PNCP (National Public Procurement Portal of Brazil)** developed in **Node.js**. It allows users to search for **public tenders or direct procurements** based on a keyword and **export the organized results to an Excel spreadsheet**.
+This project is an **automated scraper for the PNCP (National Public Procurement Portal of Brazil)** developed in **Node.js**. It allows users to search for **public notices or direct procurements** based on a keyword and **export the organized results to an Excel spreadsheet**.
 
 The tool performs the entire process automatically:
 
 * Accesses the PNCP using the provided search term
-* Navigates through the found tenders
-* Extracts general information from each tender, such as:
+* Navigates through the found public notices
+* Extracts general information from each public notice, such as:
 
-  * Tender name or direct procurement name
+  * Public notice name or direct procurement name
   * Start date for proposal submission
   * End date for proposal submission
-* Accesses the items table of each tender and collects:
+* Accesses the items table of each public notice and collects:
 
   * Item number
   * Description
@@ -207,15 +185,17 @@ The collected data is **filtered by keywords**, organized, and automatically exp
 
 ### 🔧 Additional Features
 
-* Execution via **command-line interface (CLI)**
+* Command-line interface (CLI)
 * Dynamic parameters:
 
   * Search term
-  * Number of pages/tenders to process
+  * Number of pages/public notices to process
 * Output directory selection:
 
   * The chosen location is automatically saved and reused in future runs
   * It can be changed at any time using a flag (`--arquivo`)
+* Progress backups: the program creates a backup file every **15 pages processed**. The backup uses a fixed name and is overwritten at each checkpoint (e.g. `sunscreen_backup.xlsx`).
+* Concurrency: you can run up to **3 simultaneous processes** to speed up scraping (more processes use more resources).
 * Error handling:
 
   * Clear message when no results are found
@@ -257,16 +237,11 @@ cd <PROJECT_NAME>
 npm install
 ```
 
-> The repository already includes the `node_modules` folder, since in some tests installing it using
-> `npm install node_modules` caused errors.
+> The repository already includes `node_modules` to ensure proper functionality.
 
 OR
 
-Download it using the button below:
-
-<img width="496" height="453" alt="image" src="https://github.com/user-attachments/assets/be4a514d-69bd-421a-b7b4-6a2cf921c4b9" />
-
-And click **"Download ZIP"**.
+Download the ZIP and extract.
 
 ---
 
@@ -282,8 +257,8 @@ node index.js "<search term>" <number of pages>
 
 | Parameter         | Required | Description                               |
 | ----------------- | -------- | ----------------------------------------- |
-| `search term`     | ✅ Yes    | Text used to search tenders on PNCP       |
-| `number of pages` | ❌ No     | Number of tenders to process (default: 5) |
+| `search term`     | ✅ Yes    | Text used to search public notices on PNCP       |
+| `number of pages` | ❌ No     | Number of public notices to process (default: 1) |
 
 > ⚠️ The search term **must be enclosed in quotes**.
 
@@ -291,13 +266,13 @@ node index.js "<search term>" <number of pages>
 
 ### 4️⃣ Examples
 
-Search for “sunscreen” and process up to 5 tenders:
+Search for “sunscreen” and process up to 10 public notices:
 
 ```bash
-node index.js "sunscreen" 5
+node index.js "sunscreen" 10
 ```
 
-Search only for “gloves”, processing 5 tenders (if no number is provided, the default is 5 pages):
+Search only for “gloves”, processing 1 public notice (default when not provided):
 
 ```bash
 node index.js "gloves"
@@ -326,32 +301,14 @@ node index.js "sunscreen" 3 --arquivo
 
 ---
 
-### 6️⃣ Help
-
-To display usage instructions in the terminal:
-
-```bash
-node index.js --help
-```
-
-or
-
-```bash
-node index.js -h
-```
-
----
-
-### 7️⃣ Output
+### 6️⃣ Output
 
 At the end of execution:
 
 * An **Excel (.xlsx)** file will be generated in the selected directory
-* The file name includes the execution date and time
+* The file name includes the execution date and time (for the final export)
 * The spreadsheet comes preformatted, with:
 
   * Automatic filters
   * Currency values formatted in **R$**
-  * Data organized by tender
-
-
+  * Data organized by public notice
